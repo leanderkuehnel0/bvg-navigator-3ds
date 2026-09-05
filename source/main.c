@@ -253,9 +253,13 @@ int main(void)
 {
 	gfxInitDefault();
 
-	u8* socbuf = (u8*)linearAlloc(0x100000);
+	u8* socbuf = (u8*)linearMemAlign(0x100000, 0x1000);
 	if (socbuf)
-		socInit((u32*)socbuf, 0x100000);
+	{
+		Result socres = socInit((u32*)socbuf, 0x100000);
+		if (R_FAILED(socres))
+			linearFree(socbuf);
+	}
 
 	consoleInit(GFX_TOP, &topConsole);
 	consoleInit(GFX_BOTTOM, &bottomConsole);
