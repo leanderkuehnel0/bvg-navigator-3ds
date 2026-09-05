@@ -63,7 +63,7 @@ $(TARGET).elf: $(OFILES)
 	$(CC) $(LDFLAGS) $^ $(LIBPATHS) $(LIBS) -o $@
 
 $(TARGET).smdh: $(APP_ICON)
-	smdhtool --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" $< $@
+	smdhtool --create "$(APP_TITLE)" "$(APP_TITLE)" "$(APP_AUTHOR)" $< $@
 
 $(TARGET).3dsx: $(TARGET).elf $(TARGET).smdh
 	3dsxtool $< $@ --smdh=$(TARGET).smdh

@@ -20,7 +20,8 @@ int bvg_locations(const char* query, BvgStop* out, int max, int* count,
 }
 
 static void leg(BvgLeg* l, int depH, int depM, int arrH, int arrM,
-		int walking, const char* label, const char* from, const char* to)
+		int walking, const char* label, const char* from, const char* to,
+		const char* dir)
 {
 	l->depH = depH; l->depM = depM;
 	l->arrH = arrH; l->arrM = arrM;
@@ -28,6 +29,7 @@ static void leg(BvgLeg* l, int depH, int depM, int arrH, int arrM,
 	snprintf(l->label, sizeof(l->label), "%s", label);
 	snprintf(l->from, sizeof(l->from), "%s", from);
 	snprintf(l->to, sizeof(l->to), "%s", to);
+	snprintf(l->direction, sizeof(l->direction), "%s", dir ? dir : "");
 }
 
 int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,

@@ -14,6 +14,47 @@ static PrintConsole topConsole, bottomConsole;
 #define TOP_COLS 50
 #define BOT_COLS 50
 
+/* The console font is 8-bit Latin-1, so convert UTF-8 names to Latin-1 and
+   drop the trailing "(Berlin)" style suffix VBB adds, so one byte == one
+   column and short German names fit cleanly. */
+static void repl_text(char* dst, size_t dstsz, const char* src)
+{
+	size_t o = 0;
+	const unsigned char* p = (const unsigned char*)src;
+	while (*p && o + 1 < dstsz)
+	{
+		unsigned c = *p;
+		size_t n;
+		if (c < 0x80)
+		{
+			dst[o++] = (char)c;
+			n = 1;
+		}
+		else if (c >= 0xC2 && c <= 0xDF && (p[1] & 0xC0) == 0x80)
+		{
+			dst[o++] = (char)(((c & 0x1F) << 6) | (p[1] & 0x3F));
+			n = 2;
+		}
+		else
+		{
+			n = 1;
+		}
+		p += n;
+	}
+	dst[o] = '\0';
+
+	static const char* sufs[] = { " (Berlin)", " (Brandenburg)", " (DE)" };
+	for (int i = 0; i < 3; i++)
+	{
+		size_t n = strlen(sufs[i]);
+		if (o >= n && strcmp(dst + o - n, sufs[i]) == 0)
+		{
+			dst[o - n] = '\0';
+			o -= n;
+		}
+	}
+}
+
 static void flip(void)
 {
 	gfxFlushBuffers();
@@ -47,9 +88,11 @@ static void draw_title(int y)
    row a blank fill so the colored slab reads as a card. */
 static void draw_stop_slab(int y, int bg, const char* tag, const char* name)
 {
+	char txt[TOP_COLS + 1];
+	repl_text(txt, sizeof(txt), name);
 	char visible[TOP_COLS + 1];
 	snprintf(visible, sizeof(visible), "%s  %.*s", tag,
-		 TOP_COLS - (int)strlen(tag) - 2, name);
+		 TOP_COLS - (int)strlen(tag) - 2, txt);
 	consoleSelect(&topConsole);
 	printf("\x1b[%d;1H\x1b[%dm\x1b[30m%-*s\x1b[0m", y, bg, TOP_COLS, "");
 	printf("\x1b[%d;1H\x1b[%dm\x1b[30;1m %s\x1b[0m", y, bg, visible);
@@ -83,6 +126,13 @@ static void draw_route_top(const BvgStop* start, const BvgStop* dest,
 	printf("\x1b[10;1H\x1b[37;1mJourney \x1b[36m%d/%d\x1b[0m\x1b[K", idx, total);
 	printf("\x1b[11;1H\x1b[33m%02d:%02d -> %02d:%02d\x1b[0m   %d min   %d change(s)\x1b[K",
 	       j->depH, j->depM, j->arrH, j->arrM, j->durationMin, j->transfers);
+	{
+		char dir[64];
+		repl_text(dir, sizeof(dir), j->direction);
+		if (dir[0])
+			printf("\x1b[12;1H\x1b[33m%s\x1b[0m \x1b[90m->\x1b[0m %.*s\x1b[K",
+			       j->line, TOP_COLS - (int)strlen(j->line) - 4, dir);
+	}
 	draw_top_footer();
 }
 
@@ -99,9 +149,20 @@ static void draw_route_bottom(const BvgJourney* j, int idx, int total)
 		const BvgLeg* l = &j->legs[i];
 		const char* lbl = l->walking ? "walk" : l->label;
 		int lc = l->walking ? 32 : 33;
+
+		char from[48], dir[64];
+		repl_text(from, sizeof(from), l->from);
+		repl_text(dir, sizeof(dir), l->direction);
+
 		printf("\x1b[%d;1H\x1b[96m%02d:%02d\x1b[0m \x1b[%dm%-6s\x1b[0m %.*s\x1b[K",
-		       y, l->depH, l->depM, lc, lbl, BOT_COLS - 17, l->from);
+		       y, l->depH, l->depM, lc, lbl, BOT_COLS - 17, from);
 		y++;
+		if (!l->walking && dir[0])
+		{
+			printf("\x1b[%d;1H      \x1b[90m->\x1b[0m %.*s\x1b[K",
+			       y, BOT_COLS - 9, dir);
+			y++;
+		}
 		if (i + 1 < j->legCount)
 		{
 			printf("\x1b[%d;1H      \x1b[90m|\x1b[0m\x1b[K", y);
@@ -111,8 +172,10 @@ static void draw_route_bottom(const BvgJourney* j, int idx, int total)
 	if (j->legCount > 0)
 	{
 		const BvgLeg* last = &j->legs[j->legCount - 1];
-		printf("\x1b[%d;1H\x1b[90m%02d:%02d       %s\x1b[0m\x1b[K",
-		       y, last->arrH, last->arrM, last->to);
+		char to[48];
+		repl_text(to, sizeof(to), last->to);
+		printf("\x1b[%d;1H\x1b[90m%02d:%02d\x1b[0m       %.*s\x1b[0m\x1b[K",
+		       y, last->arrH, last->arrM, BOT_COLS - 13, to);
 	}
 
 	printf("\x1b[28;1H\x1b[36mL\x1b[0m prev    \x1b[36mR\x1b[0m next\x1b[K");
@@ -162,14 +225,13 @@ static int prompt_text(const char* hint, char* out, size_t outsz)
 static void status_top(const char* fmt, const char* a)
 {
 	struct tm lt = clock_now();
+	char txt[64];
+	repl_text(txt, sizeof(txt), a ? a : "");
 	consoleSelect(&topConsole);
 	printf("\x1b[2J");
 	draw_title(1);
 	printf("\x1b[1;%dH\x1b[96m%02d:%02d\x1b[0m", TOP_COLS - 4, lt.tm_hour, lt.tm_min);
-	printf("\x1b[5;1H\x1b[36m%s", fmt);
-	if (a)
-		printf("%s", a);
-	printf("\x1b[0m");
+	printf("\x1b[5;1H\x1b[36m%s%s\x1b[0m", fmt, a ? txt : "");
 	flip();
 }
 
@@ -186,10 +248,12 @@ static void wait_key(void)
 
 static void search_error(const char* what, const char* detail)
 {
+	char txt[64];
+	repl_text(txt, sizeof(txt), detail ? detail : "");
 	consoleSelect(&topConsole);
 	printf("\x1b[1;1H\x1b[31m%s\x1b[0m\n", what);
 	if (detail)
-		printf("%s\n", detail);
+		printf("%s\n", txt);
 	printf("Press any key...");
 	wait_key();
 }

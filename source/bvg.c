@@ -245,6 +245,10 @@ int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,
 					firstTransit = k;
 					copy_str(j.line, sizeof(j.line), lineName);
 				}
+				const char* hsig = json_string(jv(leg, "headsign"));
+				if (!hsig)
+					hsig = tname;
+				copy_str(l->direction, sizeof(l->direction), hsig);
 			}
 		}
 

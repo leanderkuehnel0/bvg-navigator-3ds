@@ -24,6 +24,7 @@ typedef struct
 	char label[16];
 	char from[48];
 	char to[48];
+	char direction[48];
 } BvgLeg;
 
 typedef struct
