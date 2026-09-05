@@ -370,3 +370,11 @@ const char* json_string(const JsonNode* node)
 		return NULL;
 	return node->str;
 }
+
+int json_number(const JsonNode* node, double* out)
+{
+	if (!node || node->type != JSON_NUMBER || !out)
+		return -1;
+	*out = node->num;
+	return 0;
+}

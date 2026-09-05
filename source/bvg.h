@@ -1,6 +1,7 @@
 #ifndef BVG_BVG_H
 #define BVG_BVG_H
 
+#include <stdint.h>
 #include <time.h>
 
 #define BVG_MAX_STOPS 5
@@ -9,8 +10,10 @@
 
 typedef struct
 {
-	char id[24];
-	char name[48];
+	char id[64];
+	char name[64];
+	double lat;
+	double lon;
 } BvgStop;
 
 typedef struct
@@ -18,9 +21,9 @@ typedef struct
 	int depH, depM;
 	int arrH, arrM;
 	int walking;
-	char label[12];
-	char from[24];
-	char to[24];
+	char label[16];
+	char from[48];
+	char to[48];
 } BvgLeg;
 
 typedef struct
@@ -29,18 +32,24 @@ typedef struct
 	int arrH, arrM;
 	int durationMin;
 	int transfers;
-	char line[12];
-	char direction[48];
+	char line[16];
+	char direction[64];
 	int legCount;
 	BvgLeg legs[BVG_LEG_MAX];
 } BvgJourney;
 
-/* Returns 0 on success and fills up to 'max' matches. -1 network, -2 http, -3 parse. */
-int bvg_locations(const char* query, BvgStop* out, int max, int* count);
+/* Search for a stop by name. Returns 0 on success and fills up to 'max'
+   matches (sorted best first).
+   -1 network/server error (details via status_out/err_out), -2 parse.
+   status_out receives the HTTP status (0 if server never answered);
+   err_out receives the first failing libctru Result code. */
+int bvg_locations(const char* query, BvgStop* out, int max, int* count,
+		  uint32_t* status_out, uint32_t* err_out);
 
-/* Routes from stop id to stop id, departing at 'depart' (unix seconds).
+/* Routes from stop to stop, departing at 'depart' (unix seconds).
    Returns 0 on success and fills up to 'max' journeys. Error codes as above. */
-int bvg_journeys(const char* fromId, const char* toId, time_t depart,
-		 BvgJourney* out, int max, int* count);
+int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,
+		 BvgJourney* out, int max, int* count,
+		 uint32_t* status_out, uint32_t* err_out);
 
 #endif

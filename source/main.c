@@ -77,6 +77,22 @@ static void search_error(const char* what, const char* detail)
 	wait_key();
 }
 
+static void fetch_error(const char* stage, u32 status, u32 err)
+{
+	char buf[96];
+	consoleSelect(&topConsole);
+	printf("\x1b[1;1H\x1b[31m%s\x1b[0m\n", stage);
+	if (status >= 400)
+		snprintf(buf, sizeof(buf), "Server responded HTTP %lu", (unsigned long)status);
+	else if (err)
+		snprintf(buf, sizeof(buf), "Network result 0x%08lX", (unsigned long)err);
+	else
+		snprintf(buf, sizeof(buf), "No answer from server");
+	printf("%s\n", buf);
+	printf("Press any key...");
+	wait_key();
+}
+
 static void draw_results(const BvgStop* start, const BvgStop* dest,
 			 const BvgJourney* js, int jc, int sel)
 {
@@ -91,7 +107,7 @@ static void draw_results(const BvgStop* start, const BvgStop* dest,
 	for (int i = 0; i < jc; i++)
 	{
 		const BvgJourney* j = &js[i];
-		printf("\x1b[%d;1H%c%d) %02d:%02d %-6.6s %.*s\x1b[K",
+		printf("\x1b[%d;1H%c%d) %02d:%02d %-8.8s %.*s\x1b[K",
 		       y, (i == sel) ? '>' : ' ', i + 1,
 		       j->depH, j->depM, j->line, 34, j->direction);
 		printf("\x1b[%d;1H   arr %02d:%02d  %3d min  %d change(s)\x1b[K",
@@ -108,8 +124,8 @@ static void draw_results(const BvgStop* start, const BvgStop* dest,
 	for (int i = 0; i < j->legCount; i++)
 	{
 		const BvgLeg* l = &j->legs[i];
-		printf("\x1b[%d;1H%02d:%02d %-5.5s %.*s -> %.*s\x1b[K",
-		       2 + i, l->depH, l->depM, l->label, 11, l->from, 11, l->to);
+		printf("\x1b[%d;1H%02d:%02d %-8.8s %.*s -> %.*s\x1b[K",
+		       2 + i, l->depH, l->depM, l->label, 18, l->from, 18, l->to);
 	}
 	printf("\x1b[29;1Htime is local, realtime included\x1b[K");
 }
@@ -167,10 +183,13 @@ static int run_search(void)
 	status_top("Looking up start: ", startText);
 
 	n = 0;
-	if (bvg_locations(startText, list, BVG_MAX_STOPS, &n) < 0)
 	{
-		search_error("Network error while searching start station", NULL);
-		return 1;
+		u32 status = 0, err = 0;
+		if (bvg_locations(startText, list, BVG_MAX_STOPS, &n, &status, &err) < 0)
+		{
+			fetch_error("Failed to look up the start station", status, err);
+			return 1;
+		}
 	}
 	if (n == 0)
 	{
@@ -184,10 +203,13 @@ static int run_search(void)
 	status_top("Looking up destination: ", destText);
 
 	n = 0;
-	if (bvg_locations(destText, list, BVG_MAX_STOPS, &n) < 0)
 	{
-		search_error("Network error while searching destination", NULL);
-		return 1;
+		u32 status = 0, err = 0;
+		if (bvg_locations(destText, list, BVG_MAX_STOPS, &n, &status, &err) < 0)
+		{
+			fetch_error("Failed to look up the destination station", status, err);
+			return 1;
+		}
 	}
 	if (n == 0)
 	{
@@ -204,16 +226,18 @@ static int run_search(void)
 
 	BvgJourney js[BVG_MAX_JOURNEYS];
 	int jc = 0;
-	int rc = bvg_journeys(start.id, dest.id, time(NULL), js, BVG_MAX_JOURNEYS, &jc);
+	u32 status = 0, err = 0;
+	int rc = bvg_journeys(&start, &dest, time(NULL), js, BVG_MAX_JOURNEYS, &jc,
+			      &status, &err);
 
-	if (rc == -2 || rc == -3)
+	if (rc == -2)
 	{
 		search_error("Could not parse API response", NULL);
 		return 1;
 	}
 	if (rc < 0)
 	{
-		search_error("Network error while planning the route", NULL);
+		fetch_error("Failed to plan the route", status, err);
 		return 1;
 	}
 	if (jc == 0)

@@ -59,56 +59,62 @@ static void copy_str(char* dst, size_t dstsz, const char* src)
 	snprintf(dst, dstsz, "%s", src);
 }
 
-int bvg_locations(const char* query, BvgStop* out, int max, int* count)
+int bvg_locations(const char* query, BvgStop* out, int max, int* count,
+		  u32* status_out, u32* err_out)
 {
 	*count = 0;
+	if (status_out)
+		*status_out = 0;
+	if (err_out)
+		*err_out = 0;
 	if (max <= 0)
 		return 0;
 
-	char enc[128];
+	char enc[256];
 	urlencode(query, enc, sizeof(enc));
 
 	char url[512];
 	snprintf(url, sizeof(url),
-		 "https://v6.bvg.transport.rest/locations?stops=true&addresses=false"
-		 "&poi=false&results=%d&pretty=false&query=%s",
-		 max, enc);
+		 "https://api.transitous.org/api/v1/geocode?text=%s&type=STOP"
+		 "&numResults=%d&language=de",
+		 enc, max);
 
-	char* body = http_get(url, NULL);
+	char* body = http_get(url, status_out, err_out);
 	if (!body)
 		return -1;
 
 	JsonNode* root = json_parse(body);
 	free(body);
-	if (!root)
+	if (!root || root->type != JSON_ARRAY)
+	{
+		json_free(root);
 		return -2;
-
-	const JsonNode* list = root;
-	if (root->type == JSON_OBJECT)
-		list = json_object_get(root, "stations");
+	}
 
 	int n = 0;
-	if (list)
+	int total = json_array_len(root);
+	if (total > max)
+		total = max;
+
+	for (int i = 0; i < total && n < max; i++)
 	{
-		int total = json_array_len(list);
-		if (total > max)
-			total = max;
-		for (int i = 0; i < total && n < max; i++)
-		{
-			const JsonNode* item = json_array_at(list, i);
-			if (!item || item->type != JSON_OBJECT)
-				continue;
-			const char* ty = json_string(jv(item, "type"));
-			if (ty && strcmp(ty, "stop") != 0)
-				continue;
-			const char* id = json_string(jv(item, "id"));
-			const char* name = json_string(jv(item, "name"));
-			if (!id || !name)
-				continue;
-			copy_str(out[n].id, sizeof(out[n].id), id);
-			copy_str(out[n].name, sizeof(out[n].name), name);
-			n++;
-		}
+		const JsonNode* m = json_array_at(root, i);
+		if (!m || m->type != JSON_OBJECT)
+			continue;
+		const char* ty = json_string(jv(m, "type"));
+		if (ty && strcmp(ty, "STOP") != 0)
+			continue;
+		const char* name = json_string(jv(m, "name"));
+		if (!name)
+			continue;
+
+		out[n].lat = 0;
+		out[n].lon = 0;
+		json_number(jv(m, "lat"), &out[n].lat);
+		json_number(jv(m, "lon"), &out[n].lon);
+		copy_str(out[n].id, sizeof(out[n].id), json_string(jv(m, "id")));
+		copy_str(out[n].name, sizeof(out[n].name), name);
+		n++;
 	}
 
 	json_free(root);
@@ -116,12 +122,21 @@ int bvg_locations(const char* query, BvgStop* out, int max, int* count)
 	return 0;
 }
 
-int bvg_journeys(const char* fromId, const char* toId, time_t depart,
-		 BvgJourney* out, int max, int* count)
+int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,
+		 BvgJourney* out, int max, int* count,
+		 u32* status_out, u32* err_out)
 {
 	*count = 0;
+	if (status_out)
+		*status_out = 0;
+	if (err_out)
+		*err_out = 0;
 	if (max <= 0)
 		return 0;
+
+	char fp[48], tp[48];
+	snprintf(fp, sizeof(fp), "%.6f,%.6f", from->lat, from->lon);
+	snprintf(tp, sizeof(tp), "%.6f,%.6f", to->lat, to->lon);
 
 	struct tm gtm;
 	gmtime_r(&depart, &gtm);
@@ -130,42 +145,55 @@ int bvg_journeys(const char* fromId, const char* toId, time_t depart,
 
 	char url[640];
 	snprintf(url, sizeof(url),
-		 "https://v6.bvg.transport.rest/journeys?from=%s&to=%s&departure=%s"
-		 "&results=%d&pretty=false&remarks=false&stopovers=false"
-		 "&tickets=false&polyline=false",
-		 fromId, toId, depstr, max);
+		 "https://api.transitous.org/api/v6/plan?fromPlace=%s&toPlace=%s"
+		 "&time=%s&arriveBy=false&numItineraries=%d"
+		 "&timetableView=true&detailedLegs=false&detailedTransfers=false",
+		 fp, tp, depstr, max);
 
-	char* body = http_get(url, NULL);
+	char* body = http_get(url, status_out, err_out);
 	if (!body)
 		return -1;
 
 	JsonNode* root = json_parse(body);
 	free(body);
-	if (!root)
+	if (!root || root->type != JSON_OBJECT)
+	{
+		json_free(root);
 		return -2;
+	}
 
-	const JsonNode* journeys = json_object_get(root, "journeys");
-	if (!journeys || journeys->type != JSON_ARRAY)
+	const JsonNode* its = json_object_get(root, "itineraries");
+	if (!its || its->type != JSON_ARRAY)
 	{
 		json_free(root);
 		return -2;
 	}
 
 	int written = 0;
-	int total = json_array_len(journeys);
+	int total = json_array_len(its);
 	if (total > max)
 		total = max;
 
 	for (int i = 0; i < total; i++)
 	{
-		const JsonNode* jn = json_array_at(journeys, i);
-		if (!jn || jn->type != JSON_OBJECT)
+		const JsonNode* it = json_array_at(its, i);
+		if (!it || it->type != JSON_OBJECT)
 			continue;
 
 		BvgJourney j;
 		memset(&j, 0, sizeof(j));
 
-		const JsonNode* legs = json_object_get(jn, "legs");
+		double d = 0;
+		json_number(jv(it, "duration"), &d);
+		j.durationMin = (int)(d / 60.0 + 0.5);
+
+		json_number(jv(it, "transfers"), &d);
+		j.transfers = (int)d;
+
+		parse_tod(json_string(jv(it, "startTime")), &j.depH, &j.depM);
+		parse_tod(json_string(jv(it, "endTime")), &j.arrH, &j.arrM);
+
+		const JsonNode* legs = json_object_get(it, "legs");
 		if (!legs || legs->type != JSON_ARRAY)
 			continue;
 
@@ -182,34 +210,44 @@ int bvg_journeys(const char* fromId, const char* toId, time_t depart,
 			if (!leg || leg->type != JSON_OBJECT)
 				continue;
 
-			const JsonNode* line = jv(leg, "line");
-			const JsonNode* org = jv(leg, "origin");
-			const JsonNode* dst = jv(leg, "destination");
-			const JsonNode* depv = jv(leg, "departure");
-			const JsonNode* arrv = jv(leg, "arrival");
+			const char* mode = json_string(jv(leg, "mode"));
+			int walking = (mode && strcmp(mode, "WALK") == 0);
+
+			const JsonNode* fromP = jv(leg, "from");
+			const JsonNode* toP = jv(leg, "to");
+			const char* fname = json_string(jv(fromP, "name"));
+			const char* tname = json_string(jv(toP, "name"));
+			if (!fname || strcmp(fname, "START") == 0)
+				fname = (k == 0) ? from->name : NULL;
+			if (!tname || strcmp(tname, "END") == 0)
+				tname = (k == legCount - 1) ? to->name : NULL;
 
 			BvgLeg* l = &j.legs[k];
-			parse_tod(json_string(depv), &l->depH, &l->depM);
-			parse_tod(json_string(arrv), &l->arrH, &l->arrM);
-			copy_str(l->from, sizeof(l->from), json_string(jv(org, "name")));
-			copy_str(l->to, sizeof(l->to), json_string(jv(dst, "name")));
+			parse_tod(json_string(jv(leg, "startTime")), &l->depH, &l->depM);
+			parse_tod(json_string(jv(leg, "endTime")), &l->arrH, &l->arrM);
+			copy_str(l->from, sizeof(l->from), fname);
+			copy_str(l->to, sizeof(l->to), tname);
 
-			if (line)
-			{
-				l->walking = 0;
-				transitCount++;
-				if (firstTransit < 0)
-				{
-					copy_str(l->label, sizeof(l->label), json_string(jv(line, "name")));
-					j.depH = l->depH;
-					j.depM = l->depM;
-					firstTransit = k;
-				}
-			}
-			else
+			if (walking)
 			{
 				l->walking = 1;
 				copy_str(l->label, sizeof(l->label), "walk");
+			}
+			else
+			{
+				l->walking = 0;
+				transitCount++;
+				const JsonNode* ln = jv(leg, "displayName");
+				if (!ln)
+					ln = jv(leg, "routeShortName");
+				const char* lineName = json_string(ln);
+				if (lineName)
+					copy_str(l->label, sizeof(l->label), lineName);
+				if (firstTransit < 0)
+				{
+					firstTransit = k;
+					copy_str(j.line, sizeof(j.line), lineName);
+				}
 			}
 		}
 
@@ -217,25 +255,11 @@ int bvg_journeys(const char* fromId, const char* toId, time_t depart,
 			continue;
 
 		j.legCount = legCount;
-		j.arrH = j.legs[legCount - 1].arrH;
-		j.arrM = j.legs[legCount - 1].arrM;
 
-		int depT = j.depH * 60 + j.depM;
-		int arrT = j.arrH * 60 + j.arrM;
-		j.durationMin = (arrT - depT + 1440) % 1440;
-		j.transfers = transitCount - 1;
-
-		copy_str(j.line, sizeof(j.line), j.legs[firstTransit].label);
-
-		const JsonNode* firstLeg = json_array_at(legs, firstTransit);
-		const char* dirn = json_string(jv(firstLeg, "direction"));
+		const JsonNode* fl = json_array_at(legs, firstTransit);
+		const char* dirn = json_string(jv(fl, "headsign"));
 		if (!dirn)
-			dirn = json_string(jv(jv(firstLeg, "line"), "direction"));
-		if (!dirn)
-		{
-			const JsonNode* dstn = jv(firstLeg, "destination");
-			dirn = json_string(jv(dstn, "name"));
-		}
+			dirn = json_string(jv(jv(fl, "to"), "name"));
 		copy_str(j.direction, sizeof(j.direction), dirn);
 
 		out[written++] = j;

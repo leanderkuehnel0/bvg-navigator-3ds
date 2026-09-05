@@ -33,5 +33,6 @@ const JsonNode* json_array_at(const JsonNode* arr, int index);
 int json_array_len(const JsonNode* arr);
 
 const char* json_string(const JsonNode* node);
+int json_number(const JsonNode* node, double* out);
 
 #endif
