@@ -214,6 +214,7 @@ static int view_routes(const BvgStop* start, const BvgStop* dest,
 		       BvgJourney* js, int jc)
 {
 	int sel = 0;
+	int dirty = 1;
 	while (aptMainLoop())
 	{
 		hidScanInput();
@@ -224,12 +225,26 @@ static int view_routes(const BvgStop* start, const BvgStop* dest,
 		if (kDown & (KEY_A | KEY_X))
 			return 1;
 		if (kDown & (KEY_R | KEY_DRIGHT))
+		{
 			sel = (sel + 1) % jc;
+			dirty = 1;
+		}
 		if (kDown & (KEY_L | KEY_DLEFT))
+		{
 			sel = (sel + jc - 1) % jc;
+			dirty = 1;
+		}
 
-		draw_route_top(start, dest, &js[sel], sel + 1, jc);
-		draw_route_bottom(&js[sel], sel + 1, jc);
+		if (dirty)
+		{
+			draw_route_top(start, dest, &js[sel], sel + 1, jc);
+			draw_route_bottom(&js[sel], sel + 1, jc);
+			dirty = 0;
+		}
+		else
+		{
+			draw_clock(1);
+		}
 		flip();
 	}
 	return -1;
@@ -345,7 +360,18 @@ int main(void)
 		}
 		else
 		{
-			gspWaitForVBlank();
+			static time_t last_tick = 0;
+			time_t now = time(NULL);
+			if (now != last_tick)
+			{
+				last_tick = now;
+				draw_clock(1);
+				flip();
+			}
+			else
+			{
+				gspWaitForVBlank();
+			}
 		}
 	}
 
