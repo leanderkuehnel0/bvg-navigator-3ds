@@ -253,7 +253,7 @@ int main(void)
 {
 	gfxInitDefault();
 
-	u8* socbuf = (u8*)memalign(0x1000, 0x100000);
+	u8* socbuf = (u8*)linearAlloc(0x100000);
 	if (socbuf)
 		socInit((u32*)socbuf, 0x100000);
 
