@@ -20,24 +20,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Host UI tests
+        run: sh test/run.sh
+
       - name: Install 3DS curl portlib
         run: |
           dkp-pacman -Syu --noconfirm
           dkp-pacman -S --noconfirm 3ds-curl
 
       - name: Build
-        run: make -j$(nproc)
+        run: |
+          make -j$(nproc)
+          make bvg-navigator.cia
 
-      - name: Generate QR code for the .3dsx download
+      - name: Generate QR code for the .cia download
         if: github.ref == 'refs/heads/main'
         uses: VeyronSakai/qr-code-generator@v0.2.2
         with:
-          text: https://github.com/${{ github.repository }}/releases/download/nightly/bvg-navigator.3dsx
+          text: https://github.com/${{ github.repository }}/releases/download/nightly/bvg-navigator.cia
           output-path: qrcode.png
           width: 512
           margin: 4
 
-      - name: Publish .3dsx as rolling release
+      - name: Publish .cia as rolling release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
@@ -46,11 +51,9 @@ jobs:
           body: |
             Automatically built from the `main` branch.
 
-            Install by copying `bvg-navigator.3dsx` to the `3ds` folder of your SD card and launching it from a homebrew launcher (e.g. FBI or the Homebrew Launcher).
-
-            Scan `qrcode.png` with FBI to download the `.3dsx` directly.
+            Install `bvg-navigator.cia` on your 3DS with FBI (via SD card or by scanning `qrcode.png`). The QR code points directly at the `.cia` download.
           files: |
-            bvg-navigator.3dsx
+            bvg-navigator.cia
             bvg-navigator.smdh
             qrcode.png
           fail_on_unmatched_files: true

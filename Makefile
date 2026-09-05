@@ -22,6 +22,9 @@ export DEVKITPRO
 
 include $(DEVKITPRO)/devkitARM/3ds_rules
 
+APP_ICON ?= $(CTRULIB)/default_icon.png
+MAKEROM  ?= makerom
+
 LIBDIRS := $(CTRULIB) $(DEVKITPRO)/portlibs/3ds
 
 #---------------------------------------------------------------------------------
@@ -51,7 +54,7 @@ LIBS := -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lctru -lm
 #---------------------------------------------------------------------------------
 # Build
 #---------------------------------------------------------------------------------
-.PHONY: all clean
+.PHONY: all clean cia
 
 all: $(TARGET).3dsx
 
@@ -65,10 +68,13 @@ $(TARGET).smdh: $(APP_ICON)
 $(TARGET).3dsx: $(TARGET).elf $(TARGET).smdh
 	3dsxtool $< $@ --smdh=$(TARGET).smdh
 
+$(TARGET).cia: $(TARGET).elf $(TARGET).smdh $(TARGET).rsf
+	$(MAKEROM) -f cia -o $@ -rsf $(TARGET).rsf -target t -exefslogo -elf $< -icon $(TARGET).smdh -banner $(TARGET).smdh
+
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(BUILD) $(TARGET).elf $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf.map
+	rm -rf $(BUILD) $(TARGET).elf $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf.map $(TARGET).cia
 
