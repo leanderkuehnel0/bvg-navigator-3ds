@@ -10,6 +10,9 @@ jobs:
     name: Build BVG Navigator
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     container:
       image: devkitpro/devkitarm
 
@@ -20,11 +23,20 @@ jobs:
       - name: Build
         run: make -j$(nproc)
 
-      - name: Upload 3DSX
-        uses: actions/upload-artifact@v4
+      - name: Publish .3dsx as rolling release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
         with:
-          name: bvg-navigator
-          path: |
+          tag_name: nightly
+          name: Nightly build (main)
+          body: |
+            Automatically built from the `main` branch.
+
+            Install by copying `bvg-navigator.3dsx` to the `3ds` folder of your SD card and launching it from a homebrew launcher (e.g. FBI or the Homebrew Launcher).
+          files: |
             bvg-navigator.3dsx
             bvg-navigator.smdh
-
+          fail_on_unmatched_files: true
+          allowUpdates: true
+          makeLatest: true
+          generate_release_notes: false
