@@ -51,12 +51,9 @@ static int parse_tod(const char* iso, int* h, int* m)
 
 static void copy_str(char* dst, size_t dstsz, const char* src)
 {
-	if (!src)
-	{
-		dst[0] = '\0';
+	if (!src || dstsz == 0)
 		return;
-	}
-	snprintf(dst, dstsz, "%s", src);
+	snprintf(dst, dstsz, "%.*s", (int)(dstsz - 1), src);
 }
 
 int bvg_locations(const char* query, BvgStop* out, int max, int* count,

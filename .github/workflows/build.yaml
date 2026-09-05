@@ -20,8 +20,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install 3DS curl portlib
+        run: |
+          dkp-pacman -Syu --noconfirm
+          dkp-pacman -S --noconfirm 3ds-curl
+
       - name: Build
         run: make -j$(nproc)
+
+      - name: Generate QR code for the .3dsx download
+        if: github.ref == 'refs/heads/main'
+        uses: VeyronSakai/qr-code-generator@v0.2.2
+        with:
+          text: https://github.com/${{ github.repository }}/releases/download/nightly/bvg-navigator.3dsx
+          output-path: qrcode.png
+          width: 512
+          margin: 4
 
       - name: Publish .3dsx as rolling release
         if: github.ref == 'refs/heads/main'
@@ -33,9 +47,12 @@ jobs:
             Automatically built from the `main` branch.
 
             Install by copying `bvg-navigator.3dsx` to the `3ds` folder of your SD card and launching it from a homebrew launcher (e.g. FBI or the Homebrew Launcher).
+
+            Scan `qrcode.png` with FBI to download the `.3dsx` directly.
           files: |
             bvg-navigator.3dsx
             bvg-navigator.smdh
+            qrcode.png
           fail_on_unmatched_files: true
           allowUpdates: true
           makeLatest: true
