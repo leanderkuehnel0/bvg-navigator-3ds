@@ -66,6 +66,7 @@ int  swkbdInputText(SwkbdState* s, char* out, size_t outSize);
 void console_reset_capture(void);
 const char* console_capture(GFXScreen screen);
 int  console_capture_contains(GFXScreen screen, const char* needle);
+int  console_capture_max_col(GFXScreen screen);
 void hid_feed(const u32* keys, int n);
 void swkbd_feed(const char** answers, int n);
 

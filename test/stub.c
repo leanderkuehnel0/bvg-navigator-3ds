@@ -30,6 +30,56 @@ int console_capture_contains(GFXScreen screen, const char* needle)
 	return strstr(g_cap[screen], needle) != NULL;
 }
 
+int console_capture_max_col(GFXScreen screen)
+{
+	const char* c = g_cap[screen];
+	int curc = 0;
+	int max = 0;
+	int i = 0;
+	while (c[i])
+	{
+		if (c[i] == 0x1b && c[i + 1] == '[')
+		{
+			int j = i + 2;
+			int row = 0, col = 0, first = 1;
+			char cmd = 0;
+			while (c[j])
+			{
+				unsigned q = (unsigned char)c[j];
+				if (q >= '0' && q <= '9')
+				{
+					int* v = first ? &row : &col;
+					*v = *v * 10 + (q - '0');
+				}
+				else if (q == ';')
+					first = 0;
+				else if (q >= 0x40 && q <= 0x7e)
+				{
+					cmd = (char)q;
+					break;
+				}
+				else
+					break;
+				j++;
+			}
+			if (cmd == 'H')
+				curc = col ? col : 1;
+			else if (cmd == 'J' && row == 2)
+				curc = 0;
+			i = (cmd && c[j]) ? j + 1 : j;
+			continue;
+		}
+		if ((unsigned char)c[i] >= 0x20)
+		{
+			curc++;
+			if (curc - 1 > max)
+				max = curc - 1;
+		}
+		i++;
+	}
+	return max;
+}
+
 static void append(int idx, const char* fmt, va_list ap)
 {
 	char tmp[2048];

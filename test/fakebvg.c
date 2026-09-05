@@ -52,7 +52,7 @@ int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,
 	    "U Mehringdamm (Berlin)", "M\u00F6ckernbr\u00FCcke (Berlin)",
 	    "S+U Pankow (Berlin)");
 	leg(&out[0].legs[1], 12, 52, 13, 15, 0, "U1",
-	    "M\u00F6ckernbr\u00FCcke (Berlin)", "S+U Alexanderplatz (Berlin)",
+	    "M\u00F6ckernbr\u00FCcke (Berlin)", "S+U Alexanderplatz/Dircksenstrasse (Berlin)",
 	    "Warschauer Str. (Berlin)");
 
 	out[1].depH = 12; out[1].depM = 32;
@@ -70,7 +70,7 @@ int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,
 	    "Hallesches Tor (Berlin)", "Kochstra\u00DFe (Berlin)", NULL);
 	leg(&out[1].legs[2], 12, 48, 13, 22, 0, "M8",
 	    "Kochstra\u00DFe (Berlin)", "S+U Alexanderplatz (Berlin)",
-	    "S+U Alexanderplatz (Berlin)");
+	    "S+U Alexanderplatz/Dircksenstrasse (Berlin)");
 
 	out[2].depH = 12; out[2].depM = 35;
 	out[2].arrH = 13; out[2].arrM = 19;
@@ -80,7 +80,7 @@ int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,
 	snprintf(out[2].direction, sizeof(out[2].direction), "Rudow (Berlin)");
 	out[2].legCount = 1;
 	leg(&out[2].legs[0], 12, 35, 13, 19, 0, "U7",
-	    "U Mehringdamm (Berlin)", "S+U Alexanderplatz (Berlin)",
+	    "U Mehringdamm (Berlin)", "S+U Alexanderplatz/Dircksenstrasse (Berlin)",
 	    "Rudow (Berlin)");
 
 	*count = (max < 3) ? max : 3;

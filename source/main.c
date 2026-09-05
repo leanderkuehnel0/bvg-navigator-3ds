@@ -12,7 +12,7 @@
 static PrintConsole topConsole, bottomConsole;
 
 #define TOP_COLS 50
-#define BOT_COLS 50
+#define BOT_COLS 40
 
 /* Standard output is ASCII; the console font cannot show umlauts, so
    transliterate them ("oe" for ö, "ae" for ä, "ue" for ü, "ss" for ß) and

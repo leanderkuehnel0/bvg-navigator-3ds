@@ -43,6 +43,8 @@ int main(void)
 	run_keys(to3, 5, answers, 2);
 
 	/* Top screen: menu, headers, journey 3/3 (direct U7). */
+	CHECK(console_capture_max_col(GFX_BOTTOM) <= 40);
+	CHECK(console_capture_max_col(GFX_TOP) <= 50);
 	CHECK(console_capture_contains(GFX_TOP, "BVG Navigator"));
 	CHECK(console_capture_contains(GFX_TOP, "MAIN MENU"));
 	CHECK(console_capture_contains(GFX_TOP, "U Mehringdamm"));
