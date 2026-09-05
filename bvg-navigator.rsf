@@ -4,7 +4,7 @@ BasicInfo:
   Logo                    : Homebrew
 
 TitleInfo:
-  Category                : 0x1000
+  Category                : Application
   UniqueId                : 0x400100
 
 Option:
