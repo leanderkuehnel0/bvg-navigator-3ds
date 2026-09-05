@@ -22,7 +22,7 @@ export DEVKITPRO
 
 include $(DEVKITPRO)/devkitARM/3ds_rules
 
-APP_ICON ?= $(CTRULIB)/default_icon.png
+APP_ICON ?= icon.png
 MAKEROM  ?= makerom
 
 LIBDIRS := $(CTRULIB) $(DEVKITPRO)/portlibs/3ds

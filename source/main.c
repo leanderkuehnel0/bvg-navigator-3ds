@@ -14,32 +14,47 @@ static PrintConsole topConsole, bottomConsole;
 #define TOP_COLS 50
 #define BOT_COLS 50
 
-/* The console font is 8-bit Latin-1, so convert UTF-8 names to Latin-1 and
-   drop the trailing "(Berlin)" style suffix VBB adds, so one byte == one
-   column and short German names fit cleanly. */
+/* Standard output is ASCII; the console font cannot show umlauts, so
+   transliterate them ("oe" for ö, "ae" for ä, "ue" for ü, "ss" for ß) and
+   drop the trailing "(Berlin)" style suffix VBB adds. One source char ==
+   one or two ASCII chars, so names stay short and fit cleanly. */
 static void repl_text(char* dst, size_t dstsz, const char* src)
 {
 	size_t o = 0;
 	const unsigned char* p = (const unsigned char*)src;
 	while (*p && o + 1 < dstsz)
 	{
-		unsigned c = *p;
-		size_t n;
-		if (c < 0x80)
+		if (*p < 0x80)
 		{
-			dst[o++] = (char)c;
-			n = 1;
+			dst[o++] = (char)*p;
+			p += 1;
+			continue;
 		}
-		else if (c >= 0xC2 && c <= 0xDF && (p[1] & 0xC0) == 0x80)
+		const char* rep = "";
+		size_t len = 1;
+		if (*p == 0xC3 && (p[1] & 0xC0) == 0x80)
 		{
-			dst[o++] = (char)(((c & 0x1F) << 6) | (p[1] & 0x3F));
-			n = 2;
+			switch (p[1])
+			{
+			case 0x84: rep = "Ae"; break; /* Ä */
+			case 0x96: rep = "Oe"; break; /* Ö */
+			case 0x9C: rep = "Ue"; break; /* Ü */
+			case 0xA4: rep = "ae"; break; /* ä */
+			case 0xB6: rep = "oe"; break; /* ö */
+			case 0xBC: rep = "ue"; break; /* ü */
+			case 0x9F: rep = "ss"; break; /* ß */
+			}
+			len = 2;
 		}
-		else
+		size_t rn = strlen(rep);
+		if (o + rn >= dstsz)
+			rn = dstsz - 1 - o;
+		if (rn)
 		{
-			n = 1;
+			memcpy(dst + o, rep, rn);
+			o += rn;
 		}
-		p += n;
+		p += len;
 	}
 	dst[o] = '\0';
 

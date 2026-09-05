@@ -72,12 +72,12 @@ int main(void)
 	CHECK(console_capture_contains(GFX_TOP, "U6+M8"));
 	CHECK(console_capture_contains(GFX_TOP, "Richtung Alt-Tegel"));
 
-	/* Walking leg, umlaut as Latin-1, direction headsigns. */
+	/* Walking leg, umlaut transliterated to ASCII, direction headsigns. */
 	CHECK(console_capture_contains(GFX_BOTTOM, "Route 2/3"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "walk"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "M8"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "Hallesches Tor"));
-	CHECK(console_capture_contains(GFX_BOTTOM, "Kochstra\xDF" "e"));
+	CHECK(console_capture_contains(GFX_BOTTOM, "Kochstrasse"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "Richtung Alt-Tegel"));
 	CHECK(!console_capture_contains(GFX_BOTTOM, "(Berlin)"));
 	CHECK(!console_capture_contains(GFX_BOTTOM, "\xC3"));
@@ -89,11 +89,11 @@ int main(void)
 	CHECK(console_capture_contains(GFX_TOP, "45 min"));
 	CHECK(console_capture_contains(GFX_TOP, "S+U Pankow"));
 
-	/* Two-leg journey with umlauts (single-byte Latin-1) and U1 headsign. */
+	/* Two-leg journey with umlauts (transliterated to ASCII) and U1 headsign. */
 	CHECK(console_capture_contains(GFX_BOTTOM, "Route 1/3"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "12:30"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "U1"));
-	CHECK(console_capture_contains(GFX_BOTTOM, "M\xF6" "ckernbr\xFC" "cke"));
+	CHECK(console_capture_contains(GFX_BOTTOM, "Moeckernbruecke"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "S+U Pankow"));
 	CHECK(console_capture_contains(GFX_BOTTOM, "Warschauer Str."));
 	CHECK(!console_capture_contains(GFX_BOTTOM, "(Berlin)"));
