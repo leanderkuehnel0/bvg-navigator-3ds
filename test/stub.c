@@ -124,7 +124,7 @@ static u32 g_keys[16];
 static int g_keyN = 0;
 static int g_keyIdx = 0;
 
-void hid_feed(u32* keys, int n)
+void hid_feed(const u32* keys, int n)
 {
 	g_keyN = n;
 	g_keyIdx = 0;

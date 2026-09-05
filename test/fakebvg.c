@@ -45,33 +45,43 @@ int bvg_journeys(const BvgStop* from, const BvgStop* to, time_t depart,
 	out[0].durationMin = 45;
 	out[0].transfers = 1;
 	snprintf(out[0].line, sizeof(out[0].line), "U7");
+	snprintf(out[0].direction, sizeof(out[0].direction),
+		 "S+U Pankow (Berlin)");
 	out[0].legCount = 2;
 	leg(&out[0].legs[0], 12, 30, 12, 45, 0, "U7",
-	    "U Mehringdamm", "Moeckernbruecke");
+	    "U Mehringdamm (Berlin)", "M\u00F6ckernbr\u00FCcke (Berlin)",
+	    "S+U Pankow (Berlin)");
 	leg(&out[0].legs[1], 12, 52, 13, 15, 0, "U1",
-	    "Moeckernbruecke", "S+U Alexanderplatz");
+	    "M\u00F6ckernbr\u00FCcke (Berlin)", "S+U Alexanderplatz (Berlin)",
+	    "Warschauer Str. (Berlin)");
 
 	out[1].depH = 12; out[1].depM = 32;
 	out[1].arrH = 13; out[1].arrM = 22;
 	out[1].durationMin = 50;
 	out[1].transfers = 2;
 	snprintf(out[1].line, sizeof(out[1].line), "U6+M8");
+	snprintf(out[1].direction, sizeof(out[1].direction),
+		 "Richtung Alt-Tegel (Berlin)");
 	out[1].legCount = 3;
 	leg(&out[1].legs[0], 12, 32, 12, 40, 0, "U6",
-	    "U Mehringdamm", "Hallesches Tor");
+	    "U Mehringdamm (Berlin)", "Hallesches Tor (Berlin)",
+	    "Richtung Alt-Tegel (Berlin)");
 	leg(&out[1].legs[1], 12, 40, 12, 48, 1, "",
-	    "Hallesches Tor", "Kochstrasse");
+	    "Hallesches Tor (Berlin)", "Kochstra\u00DFe (Berlin)", NULL);
 	leg(&out[1].legs[2], 12, 48, 13, 22, 0, "M8",
-	    "Kochstrasse", "S+U Alexanderplatz");
+	    "Kochstra\u00DFe (Berlin)", "S+U Alexanderplatz (Berlin)",
+	    "S+U Alexanderplatz (Berlin)");
 
 	out[2].depH = 12; out[2].depM = 35;
 	out[2].arrH = 13; out[2].arrM = 19;
 	out[2].durationMin = 44;
 	out[2].transfers = 0;
 	snprintf(out[2].line, sizeof(out[2].line), "U7");
+	snprintf(out[2].direction, sizeof(out[2].direction), "Rudow (Berlin)");
 	out[2].legCount = 1;
 	leg(&out[2].legs[0], 12, 35, 13, 19, 0, "U7",
-	    "U Mehringdamm", "S+U Alexanderplatz");
+	    "U Mehringdamm (Berlin)", "S+U Alexanderplatz (Berlin)",
+	    "Rudow (Berlin)");
 
 	*count = (max < 3) ? max : 3;
 	*status_out = 200;
