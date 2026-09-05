@@ -4,14 +4,15 @@
 #include <time.h>
 
 #include <malloc.h>
-#include <netdb.h>
-#include <sys/socket.h>
 
 #include <3ds.h>
 
 #include "bvg.h"
 
 static PrintConsole topConsole, bottomConsole;
+
+#define TOP_COLS 50
+#define BOT_COLS 50
 
 static void flip(void)
 {
@@ -20,22 +21,130 @@ static void flip(void)
 	gspWaitForVBlank();
 }
 
+static struct tm clock_now(void)
+{
+	time_t now = time(NULL);
+	struct tm lt;
+	localtime_r(&now, &lt);
+	return lt;
+}
+
+static void draw_clock(int y)
+{
+	struct tm lt = clock_now();
+	consoleSelect(&topConsole);
+	printf("\x1b[%d;%dH\x1b[96m%02d:%02d\x1b[0m", y, TOP_COLS - 4,
+	       lt.tm_hour, lt.tm_min);
+}
+
+static void draw_title(int y)
+{
+	consoleSelect(&topConsole);
+	printf("\x1b[%d;1H\x1b[37;1mBVG Navigator\x1b[0m\x1b[K", y);
+}
+
+/* A solid two-row box: first row with a tag and the station name, second
+   row a blank fill so the colored slab reads as a card. */
+static void draw_stop_slab(int y, int bg, const char* tag, const char* name)
+{
+	char visible[TOP_COLS + 1];
+	snprintf(visible, sizeof(visible), "%s  %.*s", tag,
+		 TOP_COLS - (int)strlen(tag) - 2, name);
+	consoleSelect(&topConsole);
+	printf("\x1b[%d;1H\x1b[%dm\x1b[30m%-*s\x1b[0m", y, bg, TOP_COLS, "");
+	printf("\x1b[%d;1H\x1b[%dm\x1b[30;1m %s\x1b[0m", y, bg, visible);
+	printf("\x1b[%d;1H\x1b[%dm\x1b[30m%-*s\x1b[0m", y + 1, bg, TOP_COLS, "");
+}
+
+static void draw_top_footer(void)
+{
+	consoleSelect(&topConsole);
+	printf("\x1b[26;1H\x1b[90m%.*s\x1b[0m", TOP_COLS,
+	       "--------------------------------------------------");
+	printf("\x1b[28;1H\x1b[36mL\x1b[0m/\x1b[36mR\x1b[0m  Previous / Next journey\x1b[K");
+	printf("\x1b[29;1H\x1b[32mA\x1b[0m  New route   \x1b[31mB\x1b[0m  Exit\x1b[K");
+}
+
+static void draw_top_header(const BvgStop* start, const BvgStop* dest)
+{
+	consoleSelect(&topConsole);
+	printf("\x1b[2J");
+	draw_title(1);
+	draw_clock(1);
+	draw_stop_slab(3, 106, "START", start->name);
+	draw_stop_slab(7, 103, "DEST", dest->name);
+}
+
+static void draw_route_top(const BvgStop* start, const BvgStop* dest,
+			   const BvgJourney* j, int idx, int total)
+{
+	draw_top_header(start, dest);
+	consoleSelect(&topConsole);
+	printf("\x1b[10;1H\x1b[37;1mJourney \x1b[36m%d/%d\x1b[0m\x1b[K", idx, total);
+	printf("\x1b[11;1H\x1b[33m%02d:%02d -> %02d:%02d\x1b[0m   %d min   %d change(s)\x1b[K",
+	       j->depH, j->depM, j->arrH, j->arrM, j->durationMin, j->transfers);
+	draw_top_footer();
+}
+
+static void draw_route_bottom(const BvgJourney* j, int idx, int total)
+{
+	consoleSelect(&bottomConsole);
+	printf("\x1b[2J");
+	printf("\x1b[1;1H\x1b[33mRoute %d/%d\x1b[0m   \x1b[96m%02d:%02d -> %02d:%02d\x1b[0m\x1b[K",
+	       idx, total, j->depH, j->depM, j->arrH, j->arrM);
+
+	int y = 3;
+	for (int i = 0; i < j->legCount; i++)
+	{
+		const BvgLeg* l = &j->legs[i];
+		const char* lbl = l->walking ? "walk" : l->label;
+		int lc = l->walking ? 32 : 33;
+		printf("\x1b[%d;1H\x1b[96m%02d:%02d\x1b[0m \x1b[%dm%-6s\x1b[0m %.*s\x1b[K",
+		       y, l->depH, l->depM, lc, lbl, BOT_COLS - 17, l->from);
+		y++;
+		if (i + 1 < j->legCount)
+		{
+			printf("\x1b[%d;1H      \x1b[90m|\x1b[0m\x1b[K", y);
+			y++;
+		}
+	}
+	if (j->legCount > 0)
+	{
+		const BvgLeg* last = &j->legs[j->legCount - 1];
+		printf("\x1b[%d;1H\x1b[90m%02d:%02d       %s\x1b[0m\x1b[K",
+		       y, last->arrH, last->arrM, last->to);
+	}
+
+	printf("\x1b[28;1H\x1b[36mL\x1b[0m prev    \x1b[36mR\x1b[0m next\x1b[K");
+	printf("\x1b[29;1H\x1b[32mA\x1b[0m New route    \x1b[31mB\x1b[0m Exit\x1b[K");
+}
+
 static void draw_menu(void)
 {
 	consoleSelect(&topConsole);
 	printf("\x1b[2J");
-	printf("\x1b[1;1H\x1b[33mBVG Navigator\x1b[0m");
-	printf("\x1b[2;1HBerlin public transport");
-	printf("\x1b[4;1H\x1b[36mA\x1b[0m  Search a route");
-	printf("\x1b[5;1H\x1b[36mB\x1b[0m  Exit");
-	printf("\x1b[7;1HExample:");
-	printf("\x1b[8;1H  U Mehringdamm ->");
-	printf("\x1b[9;1H  S+U Alexanderplatz");
+	draw_title(1);
+	draw_clock(1);
+
+	printf("\x1b[3;1H\x1b[102m\x1b[30;1m %-*s\x1b[0m", TOP_COLS - 1, "MAIN MENU");
+	printf("\x1b[5;1H\x1b[32mA\x1b[0m  Search a route\x1b[K");
+	printf("\x1b[6;1H\x1b[31mB\x1b[0m  Exit\x1b[K");
+	printf("\x1b[8;1HExample:\x1b[K");
+	printf("\x1b[9;1H   U Mehringdamm\x1b[K");
+	printf("\x1b[10;1H   S+U Alexanderplatz\x1b[K");
+	printf("\x1b[24;1H\x1b[90mShows live departures for Berlin\x1b[0m\x1b[K");
+	printf("\x1b[25;1H\x1b[90mpublic transport (BVG).\x1b[0m\x1b[K");
+
+	draw_top_footer();
+
 	consoleSelect(&bottomConsole);
 	printf("\x1b[2J");
-	printf("\x1b[1;1HPress A to plan a route");
-	printf("\x1b[2;1HThe keyboard opens on the");
-	printf("\x1b[3;1Hbottom screen.");
+	printf("\x1b[1;1H\x1b[33mBVG Navigator\x1b[0m\x1b[K");
+	printf("\x1b[3;1HPress A to open the on-screen\x1b[K");
+	printf("\x1b[4;1Hkeyboard and search a route.\x1b[K");
+	printf("\x1b[6;1HEnter start and destination\x1b[K");
+	printf("\x1b[7;1Hnames, then browse journeys\x1b[K");
+	printf("\x1b[8;1Hwith L/R.\x1b[K");
 }
 
 static int prompt_text(const char* hint, char* out, size_t outsz)
@@ -52,11 +161,15 @@ static int prompt_text(const char* hint, char* out, size_t outsz)
 
 static void status_top(const char* fmt, const char* a)
 {
+	struct tm lt = clock_now();
 	consoleSelect(&topConsole);
 	printf("\x1b[2J");
-	printf("\x1b[1;1H%s", fmt);
+	draw_title(1);
+	printf("\x1b[1;%dH\x1b[96m%02d:%02d\x1b[0m", TOP_COLS - 4, lt.tm_hour, lt.tm_min);
+	printf("\x1b[5;1H\x1b[36m%s", fmt);
 	if (a)
 		printf("%s", a);
+	printf("\x1b[0m");
 	flip();
 }
 
@@ -97,49 +210,10 @@ static void fetch_error(const char* stage, u32 status, u32 err)
 	wait_key();
 }
 
-static void draw_results(const BvgStop* start, const BvgStop* dest,
-			 const BvgJourney* js, int jc, int sel)
-{
-	consoleSelect(&topConsole);
-	printf("\x1b[2J");
-	printf("\x1b[1;1H\x1b[33mBVG Navigator - Route search\x1b[0m");
-	printf("\x1b[2;1HFrom: %.*s\x1b[K", 44, start->name);
-	printf("\x1b[3;1HTo:   %.*s\x1b[K", 44, dest->name);
-	printf("\x1b[4;1HDeparting now - %d result(s)\x1b[K", jc);
-
-	int y = 6;
-	for (int i = 0; i < jc; i++)
-	{
-		const BvgJourney* j = &js[i];
-		printf("\x1b[%d;1H%c%d) %02d:%02d %-8.8s %.*s\x1b[K",
-		       y, (i == sel) ? '>' : ' ', i + 1,
-		       j->depH, j->depM, j->line, 34, j->direction);
-		printf("\x1b[%d;1H   arr %02d:%02d  %3d min  %d change(s)\x1b[K",
-		       y + 1, j->arrH, j->arrM, j->durationMin, j->transfers);
-		y += 2;
-	}
-
-	printf("\x1b[29;1H\x1b[32mX\x1b[0m New search   \x1b[32mB\x1b[0m Exit   \x1b[36mUP/DOWN\x1b[0m select\x1b[K");
-
-	consoleSelect(&bottomConsole);
-	printf("\x1b[2J");
-	printf("\x1b[1;1H\x1b[33mJourney %d/%d\x1b[0m\x1b[K", sel + 1, jc);
-	const BvgJourney* j = &js[sel];
-	for (int i = 0; i < j->legCount; i++)
-	{
-		const BvgLeg* l = &j->legs[i];
-		printf("\x1b[%d;1H%02d:%02d %-8.8s %.*s -> %.*s\x1b[K",
-		       2 + i, l->depH, l->depM, l->label, 18, l->from, 18, l->to);
-	}
-	printf("\x1b[29;1Htime is local, realtime included\x1b[K");
-}
-
-static int show_results(const BvgStop* start, const BvgStop* dest,
-			BvgJourney* js, int jc)
+static int view_routes(const BvgStop* start, const BvgStop* dest,
+		       BvgJourney* js, int jc)
 {
 	int sel = 0;
-	int redraw = 1;
-
 	while (aptMainLoop())
 	{
 		hidScanInput();
@@ -147,29 +221,16 @@ static int show_results(const BvgStop* start, const BvgStop* dest,
 
 		if (kDown & KEY_B)
 			return -1;
-		if (kDown & KEY_X)
+		if (kDown & (KEY_A | KEY_X))
 			return 1;
-		if (kDown & KEY_DUP)
-		{
-			sel = (sel + jc - 1) % jc;
-			redraw = 1;
-		}
-		if (kDown & KEY_DDOWN)
-		{
+		if (kDown & (KEY_R | KEY_DRIGHT))
 			sel = (sel + 1) % jc;
-			redraw = 1;
-		}
+		if (kDown & (KEY_L | KEY_DLEFT))
+			sel = (sel + jc - 1) % jc;
 
-		if (redraw)
-		{
-			draw_results(start, dest, js, jc, sel);
-			redraw = 0;
-			flip();
-		}
-		else
-		{
-			gspWaitForVBlank();
-		}
+		draw_route_top(start, dest, &js[sel], sel + 1, jc);
+		draw_route_bottom(&js[sel], sel + 1, jc);
+		flip();
 	}
 	return -1;
 }
@@ -222,10 +283,9 @@ static int run_search(void)
 	}
 	dest = list[0];
 
+	draw_top_header(&start, &dest);
 	consoleSelect(&topConsole);
-	printf("\x1b[2J");
-	printf("\x1b[1;1H%s -> %s\n", start.name, dest.name);
-	printf("Fetching journeys...");
+	printf("\x1b[11;1H\x1b[96mFetching journeys...\x1b[0m\x1b[K");
 	flip();
 
 	BvgJourney js[BVG_MAX_JOURNEYS];
@@ -250,7 +310,7 @@ static int run_search(void)
 		return 1;
 	}
 
-	return show_results(&start, &dest, js, jc);
+	return view_routes(&start, &dest, js, jc);
 }
 
 int main(void)
@@ -258,24 +318,11 @@ int main(void)
 	gfxInitDefault();
 
 	u8* socbuf = (u8*)memalign(0x1000, 0x100000);
-	Result socres = 0xFFFFFFFFu;
 	if (socbuf)
-		socres = socInit((u32*)socbuf, 0x100000);
+		socInit((u32*)socbuf, 0x100000);
 
 	consoleInit(GFX_TOP, &topConsole);
 	consoleInit(GFX_BOTTOM, &bottomConsole);
-
-	printf("soc: %08lX\n", (unsigned long)socres);
-
-	struct addrinfo hints;
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	struct addrinfo* res = NULL;
-	int gai = getaddrinfo("api.transitous.org", "443", &hints, &res);
-	printf("dns: %d\n", gai);
-	if (res)
-		freeaddrinfo(res);
 
 	draw_menu();
 	flip();
