@@ -3,6 +3,10 @@
 #include <string.h>
 #include <time.h>
 
+#include <malloc.h>
+#include <netdb.h>
+#include <sys/socket.h>
+
 #include <3ds.h>
 
 #include "bvg.h"
@@ -253,16 +257,25 @@ int main(void)
 {
 	gfxInitDefault();
 
-	u8* socbuf = (u8*)linearMemAlign(0x100000, 0x1000);
+	u8* socbuf = (u8*)memalign(0x1000, 0x100000);
+	Result socres = 0xFFFFFFFFu;
 	if (socbuf)
-	{
-		Result socres = socInit((u32*)socbuf, 0x100000);
-		if (R_FAILED(socres))
-			linearFree(socbuf);
-	}
+		socres = socInit((u32*)socbuf, 0x100000);
 
 	consoleInit(GFX_TOP, &topConsole);
 	consoleInit(GFX_BOTTOM, &bottomConsole);
+
+	printf("soc: %08lX\n", (unsigned long)socres);
+
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	struct addrinfo* res = NULL;
+	int gai = getaddrinfo("api.transitous.org", "443", &hints, &res);
+	printf("dns: %d\n", gai);
+	if (res)
+		freeaddrinfo(res);
 
 	draw_menu();
 	flip();
