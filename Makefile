@@ -22,7 +22,7 @@ export DEVKITPRO
 
 include $(DEVKITPRO)/devkitARM/3ds_rules
 
-LIBDIRS := $(CTRULIB)
+LIBDIRS := $(CTRULIB) $(DEVKITPRO)/portlibs/3ds
 
 #---------------------------------------------------------------------------------
 # Source files
@@ -46,7 +46,7 @@ LDFLAGS := -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $@).map
 
 LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-LIBS := -lctru -lm
+LIBS := -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lctru -lm
 
 #---------------------------------------------------------------------------------
 # Build

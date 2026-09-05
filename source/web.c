@@ -4,132 +4,56 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <curl/curl.h>
+
 #define MAX_BODY (1u << 20)
-#define MAX_REDIRECTS 4
 #define MAX_RETRIES 3
 
-static const char* kBase = "https://v6.bvg.transport.rest";
-
-enum
+typedef struct
 {
-	R_BODY = 0,
-	R_REDIRECT,
-	R_HTTPERR,
-	R_NET,
-	R_LOCATION
-};
+	char* data;
+	size_t used;
+	size_t cap;
+} buf_t;
 
-static int do_request(const char* url, u32* status, u32* err,
-		      char** body_out, char* loc, size_t locsz)
+static size_t collect(char* ptr, size_t size, size_t count, void* userdata)
 {
-	httpcContext ctx;
-	*body_out = NULL;
-	loc[0] = '\0';
+	buf_t* b = (buf_t*)userdata;
+	size_t n = size * count;
+	if (n == 0)
+		return 0;
 
-	Result ret = httpcOpenContext(&ctx, HTTPC_METHOD_GET, url, 1);
-	if (ret != 0)
+	if (b->used + n + 1 > b->cap)
 	{
-		*err = (u32)ret;
-		return R_NET;
-	}
-
-	httpcSetSSLOpt(&ctx, SSLCOPT_DisableVerify);
-	httpcAddRequestHeaderField(&ctx, "User-Agent", "bvg-navigator-3ds/0.1");
-	httpcAddRequestHeaderField(&ctx, "Accept", "application/json");
-	httpcAddRequestHeaderField(&ctx, "Accept-Encoding", "identity");
-
-	ret = httpcBeginRequest(&ctx);
-	if (ret != 0)
-	{
-		httpcCloseContext(&ctx);
-		*err = (u32)ret;
-		return R_NET;
-	}
-
-	ret = httpcGetResponseStatusCode(&ctx, status);
-	if (ret != 0)
-	{
-		httpcCloseContext(&ctx);
-		*err = (u32)ret;
-		return R_NET;
-	}
-
-	if (*status >= 300 && *status < 400 && *status != 304)
-	{
-		ret = httpcGetResponseHeader(&ctx, "Location", loc, locsz);
-		httpcCloseContext(&ctx);
-		if (ret != 0 || !loc[0])
+		size_t nc = b->cap ? b->cap : 8192;
+		while (nc < b->used + n + 1)
 		{
-			*err = (u32)ret;
-			return R_LOCATION;
+			if (nc >= MAX_BODY)
+				return 0;
+			nc *= 2;
+			if (nc > MAX_BODY)
+				nc = MAX_BODY;
 		}
-		return R_REDIRECT;
+		char* nd = (char*)realloc(b->data, nc);
+		if (!nd)
+			return 0;
+		b->data = nd;
+		b->cap = nc;
 	}
 
-	if (*status != 200)
-	{
-		httpcCloseContext(&ctx);
-		return R_HTTPERR;
-	}
+	memcpy(b->data + b->used, ptr, n);
+	b->used += n;
+	return n;
+}
 
-	size_t cap = 8192, used = 0;
-	char* body = (char*)malloc(cap);
-	if (!body)
+static void init_once(void)
+{
+	static int done = 0;
+	if (!done)
 	{
-		httpcCloseContext(&ctx);
-		*err = 0xFFFFFFFFu;
-		return R_NET;
+		curl_global_init(CURL_GLOBAL_DEFAULT);
+		done = 1;
 	}
-
-	int ok = 1;
-	for (;;)
-	{
-		if (used == cap)
-		{
-			if (cap >= MAX_BODY)
-			{
-				ok = 0;
-				break;
-			}
-			cap *= 2;
-			if (cap > MAX_BODY)
-				cap = MAX_BODY;
-			char* nb = (char*)realloc(body, cap);
-			if (!nb)
-			{
-				ok = 0;
-				break;
-			}
-			body = nb;
-		}
-		u32 nread = 0;
-		ret = httpcDownloadData(&ctx, (u8*)body + used, (u32)(cap - used), &nread);
-		used += nread;
-		if (ret == 0)
-			break;
-		if (ret == (s32)HTTPC_RESULTCODE_DOWNLOADPENDING)
-		{
-			if (used >= MAX_BODY)
-			{
-				ok = 0;
-				break;
-			}
-			continue;
-		}
-		ok = 0;
-		*err = (u32)ret;
-		break;
-	}
-	httpcCloseContext(&ctx);
-
-	if (!ok)
-	{
-		free(body);
-		return R_NET;
-	}
-	body[used] = '\0';
-	*body_out = body;
-	return R_BODY;
 }
 
 char* http_get(const char* url, u32* status_out, u32* err_out)
@@ -139,56 +63,67 @@ char* http_get(const char* url, u32* status_out, u32* err_out)
 	if (err_out)
 		*err_out = 0;
 
-	const char* cur = url;
-	char loc[384];
+	init_once();
 
-	for (int redirects = 0;;)
+	for (int attempt = 0; attempt < MAX_RETRIES; attempt++)
 	{
-		char* body = NULL;
-		u32 status = 0, err = 0;
-		int r = R_NET;
-
-		for (int attempt = 0; attempt < MAX_RETRIES; attempt++)
+		buf_t b = { NULL, 0, 0 };
+		CURL* c = curl_easy_init();
+		if (!c)
 		{
-			r = do_request(cur, &status, &err, &body, loc, sizeof(loc));
-			if (r != R_HTTPERR || status < 500)
-				break;
-			svcSleepThread((s64)1000000LL * 1000 * (attempt + 1));
-		}
-
-		switch (r)
-		{
-		case R_BODY:
-			if (status_out)
-				*status_out = 200;
-			return body;
-
-		case R_REDIRECT:
-			if (redirects++ >= MAX_REDIRECTS)
-			{
-				if (status_out)
-					*status_out = status;
-				if (err_out)
-					*err_out = err;
-				return NULL;
-			}
-			if (loc[0] == '/')
-			{
-				char abs[512];
-				snprintf(abs, sizeof(abs), "%s%s", kBase, loc);
-				strncpy(loc, abs, sizeof(loc) - 1);
-				loc[sizeof(loc) - 1] = '\0';
-			}
-			cur = loc;
-			continue;
-
-		case R_LOCATION:
-		default:
-			if (status_out)
-				*status_out = status;
 			if (err_out)
-				*err_out = err;
+				*err_out = 0xFFFFFFFFu;
 			return NULL;
 		}
+
+		curl_easy_setopt(c, CURLOPT_URL, url);
+		curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+		curl_easy_setopt(c, CURLOPT_MAXREDIRS, 4L);
+		curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 15L);
+		curl_easy_setopt(c, CURLOPT_TIMEOUT, 45L);
+		curl_easy_setopt(c, CURLOPT_USERAGENT, "bvg-navigator-3ds/0.1");
+		curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, "identity");
+		curl_easy_setopt(c, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(c, CURLOPT_SSL_VERIFYHOST, 0L);
+		curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, collect);
+		curl_easy_setopt(c, CURLOPT_WRITEDATA, &b);
+
+		CURLcode rc = curl_easy_perform(c);
+		long status = 0;
+		if (rc == CURLE_OK)
+			curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &status);
+		curl_easy_cleanup(c);
+
+		if (!b.data)
+			b.data = (char*)malloc(1);
+		if (!b.data)
+		{
+			if (err_out)
+				*err_out = 0xFFFFFFFEu;
+			return NULL;
+		}
+
+		if (rc != CURLE_OK)
+		{
+			free(b.data);
+			if (err_out)
+				*err_out = (u32)rc;
+			svcSleepThread(1000000000LL);
+			continue;
+		}
+
+		if (status_out)
+			*status_out = (u32)status;
+
+		if (status >= 400)
+		{
+			free(b.data);
+			return NULL;
+		}
+
+		b.data[b.used] = '\0';
+		return b.data;
 	}
+
+	return NULL;
 }

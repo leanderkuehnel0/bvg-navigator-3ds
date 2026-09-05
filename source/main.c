@@ -252,7 +252,10 @@ static int run_search(void)
 int main(void)
 {
 	gfxInitDefault();
-	httpcInit(0);
+
+	u8* socbuf = (u8*)memalign(0x1000, 0x100000);
+	if (socbuf)
+		socInit((u32*)socbuf, 0x100000);
 
 	consoleInit(GFX_TOP, &topConsole);
 	consoleInit(GFX_BOTTOM, &bottomConsole);
@@ -282,7 +285,7 @@ int main(void)
 		}
 	}
 
-	httpcExit();
+	socExit();
 	gfxExit();
 	return 0;
 }
