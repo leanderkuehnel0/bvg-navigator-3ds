@@ -28,6 +28,16 @@ jobs:
           dkp-pacman -Syu --noconfirm
           dkp-pacman -S --noconfirm 3ds-curl
 
+      - name: Install makerom
+        run: |
+          curl -L --fail -o /tmp/makerom.zip https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -o /tmp/makerom.zip -d /usr/local/bin
+          else
+            python3 -c "import zipfile; zipfile.ZipFile('/tmp/makerom.zip').extractall('/usr/local/bin')"
+          fi
+          chmod +x /usr/local/bin/makerom
+
       - name: Build
         run: |
           make -j$(nproc)
